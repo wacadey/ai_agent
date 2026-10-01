@@ -19,4 +19,4 @@ BEDROCK_EMBED_MODEL = os.getenv('BEDROCK_EMBED_MODEL', 'amazon.titan-embed-text-
 # 백터DB 주소
 DATABASE_URL        = os.getenv('DATABASE_URL', 'postgresql://agent:agent@localhost:5432/agentlab')
 # 메모리 기능을 위한 사용자 ID 구성
-USER_ID             = os.getenv('USER_ID', 'de-ai-25')
+USER_ID             = os.getenv('USER_ID', 'de-ai-12')
