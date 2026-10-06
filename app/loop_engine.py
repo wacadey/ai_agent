@@ -44,7 +44,7 @@ async def run_agentic_loop(task:str, max_attempts:int=2):
                     "messages":[("user", q)], 
                     "rounds":0, 
                     "final":None
-                }, config={"recusion_limit":18} )
+                }, config={"recursion_limit":18} )
             # final 키값 체크 -> 원하는 구조로 답변 도착
             final  = result.get('final')
             # 구조화 실패시 => 마지막 LLM의 응답을 답변으로 설정

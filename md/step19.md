@@ -10,7 +10,7 @@
 ```
 /
 L app
-    L loog_engine.py : 루프 엔지니어링 기법 구성
+    L loop_engine.py : 루프 엔지니어링 기법 구성
 L steps
     L step19_agent_loop.py : 테스트 코드
 ```
@@ -106,3 +106,173 @@ verifier = model.with_structured_output(Verifier)   # 단순 모델 + 특이점 
 build_graph() # 랭그래프 구조 작성, LLM, tool 노드를 추가하여, 규칙 부여 => 새로운 에이전트 구성
 # 직선 구조가 완성되면 랭체인 반영 가능
 ```
+
+## 中文详细测试步骤
+
+### 1. 确认当前分支和工作区
+
+在项目根目录执行：
+
+```powershell
+git branch --show-current
+git status --short --branch
+```
+
+当前应在 `step19-agent-loop`。如果 `git status` 显示了不属于本次测试的修改，先暂停，不要用测试结果覆盖这些文件。
+
+### 2. 启用 Python 虚拟环境
+
+如果终端前面还没有 `(agent)`，执行：
+
+```powershell
+.\agent\Scripts\Activate.ps1
+```
+
+确认 Python 来自项目虚拟环境：
+
+```powershell
+python -c "import sys; print(sys.executable)"
+```
+
+输出路径应包含：
+
+```text
+ai_agent\agent\Scripts\python.exe
+```
+
+### 3. 确认 PostgreSQL 正常
+
+Agent 的 SQL Tool 需要连接 PostgreSQL。执行：
+
+```powershell
+docker ps --filter "name=agent-postgres"
+```
+
+预期状态包含：
+
+```text
+healthy
+```
+
+如果容器没有运行，先执行：
+
+```powershell
+docker compose up -d
+```
+
+### 4. 确认 Step 19 需要的退款数据
+
+执行只读查询：
+
+```powershell
+docker exec agent-postgres psql -U agent -d agentlab -c "SELECT refund_id, order_id, requested_at, reason, amount, status FROM refunds;"
+```
+
+课程测试数据通常应包含一笔 `product_defect` 退款。如果没有表或数据，先执行：
+
+```powershell
+python -m scripts.migrate
+```
+
+### 5. 执行 Agent Loop
+
+```powershell
+python -m steps.step19_agent_loop
+```
+
+测试问题是：
+
+```text
+9月初退款情况和公司退款政策一起分析
+```
+
+程序会先把任务拆成多个子问题，然后让 LangGraph Agent 分别执行。
+
+### 6. 阅读第一轮输出
+
+正常会看到：
+
+```text
++++ ATTEMPT 1 ++++
+[PLAN]
+Q1 ...
+Q2 ...
+Q3 ...
+Q4 ...
+```
+
+这表示 Planner 已经把一个大任务拆成多个可验证的小问题。
+
+接着会看到：
+
+```text
+Q1 执行完成
+Q2 执行完成
+```
+
+每个子问题都会交给现有 Agent，可能调用 SQL、RAG、Memory 或 MCP Tool。
+
+### 7. 阅读验证结果
+
+验证器会输出：
+
+```text
+[VERIFY] passed=True
+```
+
+表示当前结果已经足够，循环结束。
+
+如果输出：
+
+```text
+[VERIFY] passed=False
+[FEEDBACK]
+- 某个数据缺失或条件不明确
+```
+
+表示验证器发现问题，反馈会传给下一轮 Planner。随后可能出现：
+
+```text
++++ ATTEMPT 2 ++++
+[REPLAN]
+```
+
+这就是 Step 19 的核心：根据不足之处重新规划并再次执行。
+
+### 8. 测试结束条件
+
+当前代码的最大尝试次数是 2 次：
+
+```python
+run_agentic_loop(task, max_attempts=2)
+```
+
+因此最多执行：
+
+```text
+第一次 PLAN → EXECUTE → VERIFY
+第二次 REPLAN → EXECUTE → VERIFY
+```
+
+即使第二次仍然没有通过，也会返回最后一次结果，避免无限循环。
+
+### 9. 测试完成后检查 Git
+
+```powershell
+git status --short
+```
+
+运行 Python 后出现 `__pycache__` 不应被加入提交。如果只想查看本次代码修改：
+
+```powershell
+git diff -- app\loop_engine.py steps\step19_agent_loop.py md\step19.md
+```
+
+### 10. 本次 Step 19 重点观察什么
+
+- Planner 是否把大问题拆成合理的子问题。
+- 每个子问题是否调用了正确的 Tool。
+- Verifier 是否发现了年份、日期或数据缺失问题。
+- `passed=False` 时是否真的进入第二轮 `REPLAN`。
+- 第二轮是否使用了第一轮反馈，而不是重复原问题。
+- 是否在最大尝试次数后停止。
